@@ -1,0 +1,200 @@
+---
+title: "Assignment 6 - QMM"
+author: "Shahbaz"
+date: "2025-10-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# STEP 1 - Loading Necessary Libraries
+```{r}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+if(!require(lpSolve)) install.packages("lpSolve", quiet = TRUE)
+if(!require(knitr)) install.packages("knitr", quiet = TRUE)
+library(lpSolve)
+library(knitr)
+```
+
+
+# Problem Formulation
+
+Understanding the Problem Data
+Heart Start has two plants (A and B) with the following production capacities and unit costs:
+
+Plant A: Capacity = 100 units, Production Cost = $600/unit
+
+Plant B: Capacity = 120 units, Production Cost = $625/unit
+
+The company supplies three wholesalers with the following monthly demands:
+
+Wholesaler 1: Demand = 80 units
+
+Wholesaler 2: Demand = 60 units
+
+Wholesaler 3: Demand = 70 units
+
+The unit shipping costs from each plant to each wholesaler are given in the table below.
+
+# 2. Defining Decision Variables
+Let Xij represent the number of AEDs shipped from Plant i to Wholesaler j, where:
+
+i∈{A,B} (Plants)
+j∈{1,2,3} (Wholesalers)
+
+Therefore, we have 6 decision variables:
+
+xA1,xA2,xA3
+xB1,xB2,xB3
+
+# 3. Formulating the Objective Function
+The goal is to minimize the total cost, which is the sum of production costs and shipping costs.
+
+Total Cost = Total Production Cost + Total Shipping Cost
+
+We can calculate the cost associated with each route by adding the unit production cost at a plant to the unit shipping cost from that plant to a specific wholesaler. This gives us the total cost per unit for each route.
+
+From \\ To	 Wholesaler1	Wholesaler2	Wholesaler3	 Production Cost
+Plant A	    r600+22	    r600+14	        r600+30	    $600
+Plant B	    r625+16     r625+20	        r625+24	    $625
+Demand	      80	         60	            70	
+
+The objective function coefficients (cost per unit for each route) are:
+
+Plant A to Wholesaler 1: 600+22=622
+Plant A to Wholesaler 2: 600+14=614
+Plant A to Wholesaler 3: 600+30=630
+Plant B to Wholesaler 1: 625+16=641
+Plant B to Wholesaler 2: 625+20=645
+Plant B to Wholesaler 3: 625+24=649
+
+Thus, the objective function to minimize is:
+
+Min Z = 622xA1+614xA2+630xA3+641xB1+645xB2+649xB3
+
+# Formulating the Constraints
+We have two types of constraints: supply constraints and demand constraints.
+Supply Constraints (Capacity): The total units shipped from a plant cannot exceed its production capacity.
+
+xA1+xA2+xA3≤100 (Plant A Capacity)
+xB1+xB2+xB3≤120(Plant B Capacity)
+
+Demand Constraints: The total units received by a wholesaler must meet its monthly demand.
+
+xA1+xB1=80(Wholesaler 1 Demand)
+xA2+xB2=60(Wholesaler 2 Demand)
+xA3+xB3=70(Wholesaler 3 Demand)
+
+Non-negativity Constraints: The number of units shipped cannot be negative.
+
+xij ≥ 0 for all i,j
+
+# Solution using Linear Programming in R - We will use the lpSolve package in R to solve this linear programming problem.
+
+```{r}
+# The cost vector contains the coefficients of the objective function.
+# The order of variables is: x_A1, x_A2, x_A3, x_B1, x_B2, x_B3
+cost_coefficients <- c(622, 614, 630, 641, 645, 649)
+```
+
+# Step 2: Set up the Constraint Matrix
+
+```{r}
+# Create the constraint matrix
+constraint_matrix <- matrix(c(
+  # Supply Constraints (Rows 1 & 2)
+  1, 1, 1, 0, 0, 0,  # Plant A: x_A1 + x_A2 + x_A3 <= 100
+  0, 0, 0, 1, 1, 1,  # Plant B: x_B1 + x_B2 + x_B3 <= 120
+  # Demand Constraints (Rows 3, 4, 5)
+  1, 0, 0, 1, 0, 0,  # Wholesaler 1: x_A1 + x_B1 = 80
+  0, 1, 0, 0, 1, 0,  # Wholesaler 2: x_A2 + x_B2 = 60
+  0, 0, 1, 0, 0, 1   # Wholesaler 3: x_A3 + x_B3 = 70
+), nrow = 5, byrow = TRUE)
+```
+
+# Step 3: Set up the Direction and Right-Hand Side (RHS) of Constraints
+
+```{r}
+# Define the direction of constraints (<=, =, etc.)
+constraint_direction <- c("<=", "<=", "=", "=", "=")
+
+# Define the right-hand side (RHS) values of the constraints
+constraint_rhs <- c(100, 120, 80, 60, 70)
+```
+
+# Solve the Linear Program
+
+```{r}
+# Solve the linear programming problem
+lp_solution <- lp("min", cost_coefficients, constraint_matrix, constraint_direction, constraint_rhs)
+
+# Check the status of the solution (0 means success)
+lp_solution$status
+```
+
+# Display the Optimal Solution
+
+```{r}
+optimal_shipments <- lp_solution$solution
+names(optimal_shipments) <- c("x_A1", "x_A2", "x_A3", "x_B1", "x_B2", "x_B3")
+
+total_min_cost <- lp_solution$objval
+
+shipping_plan <- matrix(optimal_shipments, nrow = 2, byrow = TRUE,
+                        dimnames = list(c("Plant A", "Plant B"),
+                                        c("Wholesaler 1", "Wholesaler 2", "Wholesaler 3")))
+
+cat("### Optimal Shipping Plan (Number of Units to Ship)\n")
+kable(shipping_plan, format = "simple")
+
+cat("\n### Detailed Variable Values\n")
+kable(data.frame(Variable = names(optimal_shipments), Value = optimal_shipments), format = "simple")
+
+cat("\n### Total Minimum Cost\n")
+cat("$", format(total_min_cost, big.mark = ",", nsmall = 2), sep = "")
+```
+
+# Interpretation of Results
+
+```{r}
+plant_a_total <- sum(optimal_shipments[1:3])
+plant_b_total <- sum(optimal_shipments[4:6])
+
+wholesaler_totals <- colSums(shipping_plan)
+
+cat("### Total Units Shipped from Each Plant\n")
+kable(data.frame(
+  Plant = c("Plant A", "Plant B"),
+  Total_Shipped = c(plant_a_total, plant_b_total)
+))
+
+cat("\n### Total Units Received by Each Wholesaler\n")
+kable(data.frame(
+  Wholesaler = c("Wholesaler 1", "Wholesaler 2", "Wholesaler 3"),
+  Total_Received = wholesaler_totals
+))
+
+cat("\n###Interpretation\n")
+cat("
+The optimal solution indicates how many units each plant should ship to each wholesaler
+to achieve the lowest total cost. 
+
+- *Plant A and Plant B* are both fully or efficiently utilized according to their capacities.  
+- Each wholesaler’s demand is completely satisfied.  
+- The total minimum transportation + production cost is calculated as shown above.  
+- This optimal shipping plan ensures the company minimizes logistics expenses while meeting all customer requirements.
+
+In business terms, Heart Start can use this allocation strategy to reduce unnecessary
+shipping expenses and balance plant workloads efficiently.
+")
+```
+
+
+
+
+
+
+
